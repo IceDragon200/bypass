@@ -145,7 +145,7 @@ defmodule BypassTest do
       end
     ])
 
-    assert {:error, _conn, %Mint.TransportError{reason: :closed}, _responses} =
+    assert {:error, _conn, %Mint.TransportError{reason: :timeout}, _responses} =
              request(bypass.port)
   end
 

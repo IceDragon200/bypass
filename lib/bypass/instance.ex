@@ -23,9 +23,10 @@ defmodule Bypass.Instance do
 
   # GenServer callbacks
 
+  @impl true
   def init([opts]) do
     # Get a free port from the OS
-    case :ranch_tcp.listen(so_reuseport() ++ [ip: listen_ip(), port: Keyword.get(opts, :port, 0)]) do
+    case do_listen(opts) do
       {:ok, socket} ->
         {:ok, port} = :inet.port(socket)
         :erlang.port_close(socket)
@@ -52,6 +53,23 @@ defmodule Bypass.Instance do
     end
   end
 
+  {:ok, ranch_ver} = :application.get_key(:ranch, :vsn)
+
+  cond do
+    Version.match?(to_string(ranch_ver), "~> 1.7") ->
+      defp do_listen(opts) do
+        :ranch_tcp.listen(so_reuseport() ++ [ip: listen_ip(), port: Keyword.get(opts, :port, 0)])
+      end
+
+    Version.match?(to_string(ranch_ver), "~> 2.0") ->
+      defp do_listen(opts) do
+        :ranch_tcp.listen(%{
+          socket_opts: so_reuseport() ++ [ip: listen_ip(), port: Keyword.get(opts, :port, 0)]
+        })
+      end
+  end
+
+  @impl true
   def handle_info({:DOWN, ref, _, _, reason}, state) do
     case pop_in(state.monitors[ref]) do
       {nil, state} ->
@@ -65,12 +83,14 @@ defmodule Bypass.Instance do
     end
   end
 
+  @impl true
   def handle_cast({:put_expect_result, route, ref, result}, state) do
     route
     |> put_result(ref, result, state)
     |> dispatch_awaiting_callers()
   end
 
+  @impl true
   def handle_call(request, from, state) do
     debug_log([inspect(self()), " called ", inspect(request), " with state ", inspect(state)])
     do_handle_call(request, from, state)
@@ -323,7 +343,7 @@ defmodule Bypass.Instance do
 
   defp do_up(port, ref) do
     plug_opts = [bypass_instance: self()]
-    {:ok, socket} = :ranch_tcp.listen(so_reuseport() ++ [ip: listen_ip(), port: port])
+    {:ok, socket} = do_listen(port: port)
     cowboy_opts = cowboy_opts(port, ref, socket)
     {:ok, _pid} = Plug.Cowboy.http(Bypass.Plug, plug_opts, cowboy_opts)
     socket
@@ -455,7 +475,7 @@ defmodule Bypass.Instance do
   #         printf("SO_REUSEPORT: %d\n", SO_REUSEPORT);
   #         return 0;
   #     }
-  defp so_reuseport() do
+  defp so_reuseport do
     case :os.type() do
       {:unix, :linux} -> [{:raw, 1, 15, <<1::32-native>>}]
       {:unix, :darwin} -> [{:raw, 65_535, 512, <<1::32-native>>}]
