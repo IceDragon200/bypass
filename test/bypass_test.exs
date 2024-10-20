@@ -4,7 +4,7 @@ defmodule BypassTest do
 
   defdelegate capture_log(fun), to: ExUnit.CaptureLog
 
-  test "show ISSUE #51" do
+  test "correctly releases port to prevent reuse eaddrinuse - show ISSUE #51" do
     Enum.each(
       1..1000,
       fn _ ->
@@ -16,11 +16,23 @@ defmodule BypassTest do
   end
 
   test "Bypass.open can specify a port to operate on with expect" do
-    1234 |> specify_port(:expect)
+    any_free_port()
+    |> specify_port(:expect)
   end
 
   test "Bypass.open can specify a port to operate on with expect_once" do
-    1235 |> specify_port(:expect_once)
+    any_free_port()
+    |> specify_port(:expect_once)
+  end
+
+  defp any_free_port do
+    {:ok, socket} = :gen_tcp.listen(0, [])
+    try do
+      {:ok, port} = :inet.port(socket)
+      port
+    after
+      :gen_tcp.close(socket)
+    end
   end
 
   defp specify_port(port, expect_fun) do
@@ -35,8 +47,9 @@ defmodule BypassTest do
     ])
 
     assert {:ok, 200, ""} = request(port)
-    bypass2 = Bypass.open(port: port)
-    assert(is_map(bypass2) and bypass2.__struct__ == Bypass)
+
+    # Port reuse is no longer allowed due to changes to the underlying socket behaviour
+    # assert %Bypass{} = Bypass.open(port: port)
   end
 
   test "Bypass.down takes down the socket with expect" do
@@ -126,11 +139,13 @@ defmodule BypassTest do
   end
 
   test "closing a bypass while the request is in-flight with expect" do
-    :expect |> closing_in_flight
+    :expect
+    |> closing_in_flight()
   end
 
   test "closing a bypass while the request is in-flight with expect_once" do
-    :expect_once |> closing_in_flight
+    :expect_once
+    |> closing_in_flight()
   end
 
   defp closing_in_flight(expect_fun) do

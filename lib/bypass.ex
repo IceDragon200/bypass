@@ -66,8 +66,8 @@ defmodule Bypass do
   defp start_supervised_error({{:EXIT, reason}, info}) when is_tuple(info),
     do: Exception.format_exit(reason)
 
-  defp start_supervised_error({reason, info}) when is_tuple(info),
-    do: Exception.format_exit(reason)
+  defp start_supervised_error({_reason, info} = err) when is_tuple(info),
+    do: Exception.format_exit(err)
 
   defp start_supervised_error(reason), do: Exception.format_exit({:start_spec, reason})
 
